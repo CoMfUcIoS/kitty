@@ -1,10 +1,6 @@
 import datetime
-import json
-import subprocess
-from collections import defaultdict
 
-from kitty.boss import get_boss
-from kitty.fast_data_types import Screen, add_timer
+from kitty.fast_data_types import Screen
 from kitty.tab_bar import (
     DrawData,
     ExtraData,
@@ -14,8 +10,6 @@ from kitty.tab_bar import (
     draw_attributed_string,
     draw_tab_with_powerline,
 )
-
-timer_id = None
 
 
 def draw_tab(
@@ -28,10 +22,6 @@ def draw_tab(
     is_last: bool,
     extra_data: ExtraData,
 ) -> int:
-    global timer_id
-
-    # if timer_id is None:
-    #     timer_id = add_timer(_redraw_tab_bar, 2.0, True)
     draw_tab_with_powerline(
         draw_data, screen, tab, before, max_title_length, index, is_last, extra_data
     )
@@ -41,10 +31,12 @@ def draw_tab(
 
 
 def draw_right_status(draw_data: DrawData, screen: Screen) -> None:
-    # The tabs may have left some formats enabled. Disable them now.
+    # Reset any existing formatting
     draw_attributed_string(Formatter.reset, screen)
+
     cells = create_cells()
-    # Drop cells that wont fit
+
+    # Drop cells that won't fit
     while True:
         if not cells:
             return
@@ -59,15 +51,17 @@ def draw_right_status(draw_data: DrawData, screen: Screen) -> None:
     tab_bg = as_rgb(int(draw_data.inactive_bg))
     tab_fg = as_rgb(int(draw_data.inactive_fg))
     default_bg = as_rgb(int(draw_data.default_bg))
+
     for cell in cells:
         # Draw the separator
         if cell == cells[0]:
             screen.cursor.fg = tab_bg
-            screen.draw("")
+            screen.draw("")
         else:
             screen.cursor.fg = default_bg
             screen.cursor.bg = tab_bg
-            screen.draw("")
+            screen.draw("")
+
         screen.cursor.fg = tab_fg
         screen.cursor.bg = tab_bg
         screen.draw(f" {cell} ")
@@ -76,50 +70,6 @@ def draw_right_status(draw_data: DrawData, screen: Screen) -> None:
 def create_cells() -> list[str]:
     now = datetime.datetime.now()
     return [
-        currently_playing(),
-        get_headphone_battery_status(),
-        now.strftime("%d %b"),
-        now.strftime("%H:%M"),
+        now.strftime("%d %b"),  # Date: e.g., "27 Dec"
+        now.strftime("%H:%M"),  # Time: e.g., "15:30"
     ]
-
-
-def get_headphone_battery_status():
-    try:
-        battery_pct = int(subprocess.getoutput("headsetcontrol -b -c"))
-    except Exception:
-        status = ""
-    else:
-        if battery_pct < 0:
-            status = ""
-        else:
-            status = f"{battery_pct}% {''[battery_pct // 10]}"
-    return f" {status}"
-
-
-STATE = defaultdict(lambda: "", {"Paused": "", "Playing": ""})
-
-
-def currently_playing():
-    # TODO: Work out how to add python libraries so that I can query dbus directly
-    # For now, implemented in a separate python project: dbus-player-status
-    status = " "
-    data = {}
-    try:
-        data = json.loads(subprocess.getoutput("dbus-player-status"))
-    except ValueError:
-        pass
-    if data:
-        if "state" in data:
-            status = f"{status} {STATE[data['state']]}"
-        if "title" in data:
-            status = f"{status} {data['title']}"
-        if "artist" in data:
-            status = f"{status} - {data['artist']}"
-    else:
-        status = ""
-    return status
-
-
-def _redraw_tab_bar(timer_id):
-    for tm in get_boss().all_tab_managers:
-        tm.mark_tab_bar_dirty()
